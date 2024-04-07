@@ -11,9 +11,10 @@ import Foundation
     @objc public static let shared = URLTracker()
     
     private var trackedURLs: [URL] = []
+    private var taskStartTimes: [URLSessionTask: Date] = [:]
     
-    // Closure property to notify about new URL
-    @objc public var newURLCallback: ((URL) -> Void)?
+    // Closure property to notify about new URL and its time interval
+    @objc public var newURLCallback: ((URL, TimeInterval) -> Void)?
     
     private override init() {
         super.init()
@@ -47,10 +48,9 @@ import Foundation
     }
 
     
-    @objc fileprivate func trackURL(_ url: URL) {
-        // You can implement additional logic here, such as measuring timing or handling redirections.
-        // Notify about new URL
-        newURLCallback?(url)
+    // Notify about new URL and its time interval
+    @objc fileprivate func trackURL(_ url: URL, withInterval interval: TimeInterval) {
+        newURLCallback?(url, interval)
         trackedURLs.append(url)
     }
     
@@ -61,23 +61,38 @@ import Foundation
 
 extension URLSession {
     @objc func swizzledDataTask(with url: URL, completionHandler: @escaping (Data?, URLResponse?, Error?) -> Void) -> URLSessionDataTask {
-        // Track URL here or perform any other logic
-        print("Swizzled URLSession data task: \(url.absoluteString)")
-        URLTracker.shared.trackURL(url)
-        // Call the original implementation
-        return self.swizzledDataTask(with: url, completionHandler: completionHandler)
+        let startTime = Date()
+        let task = self.swizzledDataTask(with: url, completionHandler: { (data, response, error) in
+            // Calculate time interval
+            let endTime = Date()
+            let interval = endTime.timeIntervalSince(startTime)
+            // Track URL here or perform any other logic
+            print("Swizzled URLSession data task: \(url.absoluteString)")
+            // Track URL and its time interval
+            URLTracker.shared.trackURL(url, withInterval: interval)
+            
+            // Call the original completion handler
+            completionHandler(data, response, error)
+        })
+        return task
     }
 }
 
 extension URLSessionTask {
     @objc func swizzledResume() {
-        if let originalRequest = self.originalRequest,
-           let url = originalRequest.url {
-            // Track URL here or perform any other logic
-            print("Swizzled URLSessionTask resume: \(url.absoluteString)")
-            URLTracker.shared.trackURL(url)
-        }
+        let startTime = Date()
+        
         // Call the original implementation
         self.swizzledResume()
+        
+        if let originalRequest = self.originalRequest, let url = originalRequest.url {
+            // Track URL and its time interval
+            DispatchQueue.main.async {
+                let endTime = Date()
+                let interval = endTime.timeIntervalSince(startTime)
+                print("Swizzled URLSessionTask resume: \(url.absoluteString)")
+                URLTracker.shared.trackURL(url, withInterval: interval)
+            }
+        }
     }
 }
