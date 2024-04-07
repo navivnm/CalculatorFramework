@@ -13,17 +13,17 @@ import Foundation
     private var trackedURLs: [URL] = []
     
     // Closure property to notify about new URL
-    public var newURLCallback: ((URL) -> Void)?
+    @objc public var newURLCallback: ((URL) -> Void)?
     
     private override init() {
         super.init()
         
         swizzleNSURLSessionMethods()
+        swizzleNSURLSessionTaskMethods()
     }
     
     private func swizzleNSURLSessionMethods() {
-        let _ = URLSession.self
-        //let originalSelector = NSSelectorFromString("dataTaskWithURL:completionHandler:")
+        let _ = URLSession.shared
         let originalSelector = NSSelectorFromString("dataTaskWithURL:completionHandler:")
         let swizzledSelector = #selector(URLSession.swizzledDataTask(with:completionHandler:))
         
@@ -32,13 +32,22 @@ import Foundation
         
         method_exchangeImplementations(originalMethod, swizzledMethod)
     }
+
     
-    /*@objc func swizzledDataTask(with url: URL, completionHandler: @escaping (Data?, URLResponse?, Error?) -> Void) -> URLSessionDataTask {
-        trackURL(url)
-        return self.swizzledDataTask(with: url, completionHandler: completionHandler)
-    }*/
+    private func swizzleNSURLSessionTaskMethods() {
+        let _ = URLSessionTask.self
+        
+        let originalSelector = NSSelectorFromString("resume")
+        let swizzledSelector = #selector(URLSessionTask.swizzledResume)
+        
+        let originalMethod = class_getInstanceMethod(URLSessionTask.self, originalSelector)!
+        let swizzledMethod = class_getInstanceMethod(URLSessionTask.self, swizzledSelector)!
+        
+        method_exchangeImplementations(originalMethod, swizzledMethod)
+    }
+
     
-    fileprivate func trackURL(_ url: URL) {
+    @objc fileprivate func trackURL(_ url: URL) {
         // You can implement additional logic here, such as measuring timing or handling redirections.
         // Notify about new URL
         newURLCallback?(url)
@@ -53,9 +62,22 @@ import Foundation
 extension URLSession {
     @objc func swizzledDataTask(with url: URL, completionHandler: @escaping (Data?, URLResponse?, Error?) -> Void) -> URLSessionDataTask {
         // Track URL here or perform any other logic
-        print("Swizzled data task: \(url.absoluteString)")
+        print("Swizzled URLSession data task: \(url.absoluteString)")
         URLTracker.shared.trackURL(url)
         // Call the original implementation
         return self.swizzledDataTask(with: url, completionHandler: completionHandler)
+    }
+}
+
+extension URLSessionTask {
+    @objc func swizzledResume() {
+        if let originalRequest = self.originalRequest,
+           let url = originalRequest.url {
+            // Track URL here or perform any other logic
+            print("Swizzled URLSessionTask resume: \(url.absoluteString)")
+            URLTracker.shared.trackURL(url)
+        }
+        // Call the original implementation
+        self.swizzledResume()
     }
 }
