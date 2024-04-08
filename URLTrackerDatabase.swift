@@ -76,7 +76,7 @@ import SQLite3
         if sqlite3_prepare_v2(database, insertStatementString, -1, &insertStatement, nil) == SQLITE_OK {
             sqlite3_bind_text(insertStatement, 1, (startingURL as NSString).utf8String, -1, nil)
             sqlite3_bind_text(insertStatement, 2, (finalURL as NSString).utf8String, -1, nil)
-            sqlite3_bind_double(insertStatement, 3, interval)
+            sqlite3_bind_double(insertStatement, 3, (interval * 1000))
             sqlite3_bind_text(insertStatement, 4, (success as NSString).utf8String, -1, nil)
             
             if sqlite3_step(insertStatement) != SQLITE_DONE {
