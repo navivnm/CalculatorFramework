@@ -8,12 +8,13 @@
 import Foundation
 
 @objc public class URLTracker: NSObject {
+    
     @objc public static let shared = URLTracker()
-    
-    private var trackedURLs: [URL] = []
-    
     // Closure property to notify about new URL, final URL, and its time interval
     @objc public var newURLCallback: ((URL, URL, TimeInterval) -> Void)?
+   
+    private var trackedURLs: [URL] = []
+    @objc public static let database = URLTrackerDatabase()
     
     private override init() {
         super.init()
@@ -48,13 +49,20 @@ import Foundation
 
     
     // Track starting URL, final URL, and its time interval
-    @objc public func trackURL(startingURL: URL, finalURL: URL, withInterval interval: TimeInterval) {
+    @objc public func trackURL(startingURL: URL, finalURL: URL, withInterval interval: TimeInterval, successful: Bool) {
         newURLCallback?(startingURL, finalURL, interval)
-        trackedURLs.append(startingURL)
+        URLTracker.database.insertURL(startingURL: startingURL.absoluteString, finalURL: finalURL.absoluteString, interval: interval, successful: successful)
+        trackedURLs.append(finalURL)
         // You can store or use the final URL as needed
     }
+    
     @objc public func getTrackedURLs() -> [URL] {
         return trackedURLs
+    }
+    
+    @objc public func getDBTrackedURLs() -> [[String: Any]] {
+        let abcd = URLTracker.database.retrieveTrackedURLs()
+        return abcd
     }
 }
 
@@ -67,13 +75,19 @@ extension URLSession {
                 let endTime = Date()
                 let interval = endTime.timeIntervalSince(startTime)
                 var finalURL = url
+                var successful = true
                 
                 if let httpResponse = response as? HTTPURLResponse, let redirectedURL = httpResponse.url {
                     finalURL = redirectedURL
                 }
                 
-                print("Swizzled URLSession data task: \(url.absoluteString) - Final URL: \(finalURL.absoluteString)")
-                URLTracker.shared.trackURL(startingURL: url, finalURL: finalURL, withInterval: interval)
+                if let error = error {
+                    successful = false
+                    print("Swizzled URLSession data task: \(url.absoluteString) - Final URL: \(finalURL.absoluteString) - Connection failed with error: \(error.localizedDescription)")
+                } else {
+                    print("Swizzled URLSession data task: \(url.absoluteString) - Final URL: \(finalURL.absoluteString) - Connection successful")
+                }
+                URLTracker.shared.trackURL(startingURL: url, finalURL: finalURL, withInterval: interval, successful: successful)
                 
                 // Call the original completion handler
                 completionHandler(data, response, error)
@@ -96,7 +110,8 @@ extension URLSessionTask {
                 let endTime = Date()
                 let interval = endTime.timeIntervalSince(startTime)
                 print("Swizzled URLSessionTask resume: \(url.absoluteString)")
-                URLTracker.shared.trackURL(startingURL: url, finalURL: url, withInterval: interval)
+                let successful = (self.error == nil)
+                URLTracker.shared.trackURL(startingURL: url, finalURL: url, withInterval: interval, successful: successful)
             }
         }
     }
